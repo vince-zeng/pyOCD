@@ -177,12 +177,12 @@ class S5JS100(CoreSightTarget):
 
     def create_init_sequence(self):
         seq = super(S5JS100, self).create_init_sequence()
-        seq.replace_task('find_aps', self.find_aps)
-        # after creating ap, we fix rom addr
-        seq.insert_before('init_ap_roms',
-            ('fixup_ap_base_addrs', self._fixup_ap_base_addrs),
+        seq.wrap_task('discovery',
+            lambda seq: seq
+                        .replace_task('find_aps', self.find_aps)
+                        .replace_task('create_cores', self.create_s5js100_core)
+                        .insert_before('find_components', ('fixup_ap_base_addrs', self._fixup_ap_base_addrs),)
             )
-        seq.replace_task('create_cores', self.create_s5js100_core)
         return seq
 
     def _fixup_ap_base_addrs(self):
@@ -206,7 +206,7 @@ class CortexM_S5JS100(CortexM):
 
     def reset(self, reset_type=None):
         # Always use software reset for S5JS100 since the hardware version
-        self.session.notify(Target.EVENT_PRE_RESET, self)
+        self.session.notify(Target.Event.PRE_RESET, self)
 
         if reset_type is Target.ResetType.HW:
             #LOG.info("s5js100 reset HW")
@@ -257,7 +257,7 @@ class CortexM_S5JS100(CortexM):
             except exceptions.TransferError:
                 self.flush()
 
-        self.session.notify(Target.EVENT_POST_RESET, self)
+        self.session.notify(Target.Event.POST_RESET, self)
 
     def reset_and_halt(self, reset_type=None):
         #LOG.info("reset_and_halt")
@@ -293,15 +293,15 @@ class CortexM_S5JS100(CortexM):
         """! @brief Resume execution of the core.
         """
         #LOG.info("s5js100.resume")
-        if self.get_state() != Target.TARGET_HALTED:
+        if self.get_state() != Target.State.HALTED:
             LOG.info('cannot resume: target not halted')
             return
-        self.session.notify(Target.EVENT_PRE_RUN, self, Target.RUN_TYPE_RESUME)
+        self.session.notify(Target.Event.PRE_RUN, self, Target.RunType.RESUME)
         self._run_token += 1
         self.clear_debug_cause_bits()
         self.write_memory(CortexM.DHCSR, CortexM.DBGKEY | CortexM.C_DEBUGEN)
         self.flush()
-        self.session.notify(Target.EVENT_POST_RUN, self, Target.RUN_TYPE_RESUME)
+        self.session.notify(Target.Event.POST_RUN, self, Target.RunType.RESUME)
         #LOG.info("s5js100.resume done")
 
     def get_state(self):
@@ -325,16 +325,16 @@ class CortexM_S5JS100(CortexM):
             # were executed by checking S_RETIRE_ST.
             newDhcsr = self.read_memory(CortexM.DHCSR)
             if (newDhcsr & CortexM.S_RESET_ST) and not (newDhcsr & CortexM.S_RETIRE_ST):
-                return Target.TARGET_RESET
+                return Target.State.RESET
         if dhcsr & CortexM.S_LOCKUP:
-            return Target.TARGET_LOCKUP
+            return Target.State.LOCKUP
         elif dhcsr & CortexM.S_SLEEP:
-            return Target.TARGET_SLEEPING
+            return Target.State.SLEEPING
         elif dhcsr & CortexM.S_HALT:
-            return Target.TARGET_HALTED
+            return Target.State.HALTED
         else:
-            return Target.TARGET_RUNNING
- 
+            return Target.State.RUNNING
+
 
 
 
