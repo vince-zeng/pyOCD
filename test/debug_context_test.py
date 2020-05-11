@@ -101,10 +101,10 @@ def debug_context_test(board_id):
         # Reproduce a gdbserver failure.
         print("\n------ Test 1: Mem cache ------")
         print("Writing gdb test binary")
-        ctx.write_memory_block8(0x20000000, gdb_test_binary_data)
+        ctx.write_memory_block8(0x406f4000, gdb_test_binary_data)
         
         print("Reading first chunk")
-        data = ctx.read_memory_block8(0x20000000, 64)
+        data = ctx.read_memory_block8(0x406f4000, 64)
         if data == gdb_test_binary_data[:64]:
             test_pass_count += 1
         test_count += 1
@@ -112,7 +112,7 @@ def debug_context_test(board_id):
         print("Reading N chunks")
         for n in range(8):
             offset = 0x7e + (4 * n)
-            data = ctx.read_memory_block8(0x20000000 + offset, 4)
+            data = ctx.read_memory_block8(0x406f4000 + offset, 4)
             if data == gdb_test_binary_data[offset:offset + 4]:
                 test_pass_count += 1
             test_count += 1

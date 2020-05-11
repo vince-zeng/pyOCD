@@ -19,7 +19,7 @@
 MEMORY
 {
   /* Ram configurations are for smallest KL25 in family - 4K */
-  m_all        (rwx) : ORIGIN = 0x00000000, LENGTH = 0x600
+  m_all        (rwx) : ORIGIN = 0x00100000, LENGTH = 0x600
 }
 
 /* Define output sections */
