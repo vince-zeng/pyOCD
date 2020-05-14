@@ -111,7 +111,7 @@ flash_algo = {
     'page_size': 0x400,
     'analyzer_supported': False,
     'analyzer_address': 0x00000000,
-    'page_buffers': [0x00101000, 0x00101400],   # Enable double buffering
+    'page_buffers': [0x00101000, 0x00101400],  # Enable double buffering
     'min_program_length': 0x400
 
 }
@@ -121,10 +121,10 @@ class Flash_s5js100(Flash):
     def __init__(self, target, flash_algo):
         super(Flash_s5js100, self).__init__(target, flash_algo)
         self._did_prepare_target = False
-        #LOG.info("S5JS100.Flash_s5js100.__init__ c")
+        # LOG.info("S5JS100.Flash_s5js100.__init__ c")
 
     def init(self, operation, address=None, clock=0, reset=True):
-        #LOG.info("S5JS100.Flash_s5js100.init c")
+        # LOG.info("S5JS100.Flash_s5js100.init c")
         global is_flashing
 
         if self._active_operation != operation and self._active_operation is not None:
@@ -137,7 +137,7 @@ class Flash_s5js100(Flash):
         is_flashing = True
 
     def uninit(self):
-        #LOG.info("S5JS100.Flash_s5js100.uninit c")
+        # LOG.info("S5JS100.Flash_s5js100.uninit c")
         if self._active_operation is None:
             return
 
@@ -153,14 +153,13 @@ PROGRAM_PAGE_WEIGHT = 1
 
 
 class S5JS100(CoreSightTarget):
-
     VENDOR = "Samsung"
     AP_NUM = 0
     ROM_ADDR = 0xE00FE000
 
     memoryMap = MemoryMap(
-        #FlashRegion(    start=0x406f4000,  length=0x00100000, page_size = 0x400,     blocksize=4096, is_boot_memory=True, algo=flash_algo),
-        #FlashRegion(    start=0x406f4000,  length=0x00100000, page_size = 0x400, blocksize=0x1000, is_boot_memory=True, algo=flash_algo, flash_class=Flash_s5js100),
+        # FlashRegion(    start=0x406f4000,  length=0x00100000, page_size = 0x400,     blocksize=4096, is_boot_memory=True, algo=flash_algo),
+        # FlashRegion(    start=0x406f4000,  length=0x00100000, page_size = 0x400, blocksize=0x1000, is_boot_memory=True, algo=flash_algo, flash_class=Flash_s5js100),
         FlashRegion(start=0x406f4000, length=0x00100000,
                     page_size=0x400, blocksize=0x1000,
                     is_boot_memory=True,
@@ -180,10 +179,10 @@ class S5JS100(CoreSightTarget):
     def create_init_sequence(self):
         seq = super(S5JS100, self).create_init_sequence()
         seq.wrap_task(
-            'discovery', lambda seq: seq .replace_task(
-                'find_aps', self.find_aps) .replace_task(
-                'create_cores', self.create_s5js100_core) .insert_before(
-                'find_components', ('fixup_ap_base_addrs', self._fixup_ap_base_addrs),))
+            'discovery', lambda seq: seq.replace_task(
+                'find_aps', self.find_aps).replace_task(
+                'create_cores', self.create_s5js100_core).insert_before(
+                'find_components', ('fixup_ap_base_addrs', self._fixup_ap_base_addrs), ))
         return seq
 
     def _fixup_ap_base_addrs(self):
@@ -205,68 +204,64 @@ class S5JS100(CoreSightTarget):
 
 
 class CortexM_S5JS100(CortexM):
-    #S5JS100_reset_type = Target.ResetType.SW_VECTRESET
+    # S5JS100_reset_type = Target.ResetType.SW_VECTRESET
 
     def reset(self, reset_type=None):
         # Always use software reset for S5JS100 since the hardware version
         self.session.notify(Target.Event.PRE_RESET, self)
 
-        #LOG.info("s5js100 reset HW")
-        self.S5JS100_reset_type = Target.ResetType.HW
-        #LOG.info("1. 0x83011004 : 0x%x", self.read_memory(0x83011004))
+        # LOG.info("s5js100 reset HW")
+        self.S5JS100_reset_type = reset_type
+        # LOG.info("1. 0x83011004 : 0x%x", self.read_memory(0x83011004))
         self.write_memory(0x82020018, 0x1 << 1)
         self.write_memory(0x83011000, 0x4 << 0)  # enable watchdog
         self.write_memory(0x8301100c, 0x1 << 0)
         self.write_memory(0x83011010, 0x1 << 0)
         self.write_memory(0x83011020, 0x1 << 0)
         self.write_memory(0x83011800, 0x1 << 0)  # clock gating disable
-        # set 300ms to be reset , 1 sec=32768
-        self.write_memory(0x83011004, 9600 << 0)
+        # set 1s to be reset , 1 sec=32768
+        self.write_memory(0x83011004, 32768 << 0)
         # force to load value to be reset
         self.write_memory(0x83011008, 0xFF << 0)
-        # Set SP and PC based on interrupt vector in PBL
-        #self.write_memory(0x00000004, 0xE7FEE7FE)
-        pc = self.read_memory(0x40000004)
-        sp = self.read_memory(0x40000000)
-        #self.write_core_register('sp', sp)
-        self.write_core_register('sp', sp)
-        self.write_core_register('pc', pc)
-        #LOG.info("PC : 0x%x", self.read_core_register('pc'))
-        #LOG.info("SP : 0x%x", self.read_core_register('sp'))
+
+        xpsr = self.read_core_register('xpsr')
+        if xpsr & self.XPSR_THUMB == 0:
+            self.write_core_register('xpsr', xpsr | self.XPSR_THUMB)
+
+        self.write_memory(0x120000, 0xe7fe)
+        self.write_core_register('pc', 0x120000)
+
         self.flush()
         self.resume()
-        sleep(1)
         with Timeout(5.0) as t_o:
             while t_o.check():
                 try:
                     dhcsr_reg = self.read32(CortexM.DHCSR)
-                    if (dhcsr_reg & CortexM.S_RESET_ST) == 0:
+                    LOG.debug("reg = %x", dhcsr_reg)
+                    if (dhcsr_reg & CortexM.S_RESET_ST) != 0:
                         break
+                    sleep(0.1)
                 except exceptions.TransferError:
                     self.flush()
                     self._ap.dp.init()
                     self._ap.dp.power_up_debug()
                     sleep(0.01)
-
+            else:
+                raise Exception("Timeout waiting for reset")
         self.session.notify(Target.Event.POST_RESET, self)
 
     def reset_and_halt(self, reset_type=None):
         # LOG.info("reset_and_halt")
-        # self.reset()
-        # self.reset(self.ResetType.SW_SYSRESETREQ)
-        self.reset(self.ResetType.HW)
+        reset_catch_saved_demcr = self.read_memory(CortexM.DEMCR)
+        if (reset_catch_saved_demcr & CortexM.DEMCR_VC_CORERESET) == 0:
+            self.write_memory(
+                CortexM.DEMCR,
+                reset_catch_saved_demcr | CortexM.DEMCR_VC_CORERESET)
+        self.reset(reset_type)
+        sleep(0.1)
         self.halt()
         self.wait_halted()
-        #LOG.info("2. 0x83011004 : 0x%x", self.read_memory(0x83011004))
-        # Set SP and PC based on interrupt vector in PBL
-        #self.write_memory(0x00000004, 0xE7FEE7FE)
-        pc = self.read_memory(0x40000004)
-        sp = self.read_memory(0x40000000)
-        #self.write_core_register('sp', sp)
-        self.write_core_register('sp', sp)
-        self.write_core_register('pc', pc)
-        #LOG.info("PC : 0x%x", self.read_core_register('pc'))
-        #LOG.info("SP : 0x%x", self.read_core_register('sp'))
+        self.write_memory(CortexM.DEMCR, reset_catch_saved_demcr)
 
     def wait_halted(self):
         with Timeout(5.0) as t_o:
@@ -293,19 +288,19 @@ class CortexM_S5JS100(CortexM):
         self.write_memory(CortexM.DHCSR, CortexM.DBGKEY | CortexM.C_DEBUGEN)
         self.flush()
         self.session.notify(Target.Event.POST_RUN, self, Target.RunType.RESUME)
-        #LOG.info("s5js100.resume done")
+        # LOG.info("s5js100.resume done")
 
     def get_state(self):
         # LOG.info("s5js100.get_state")
         try:
             dhcsr = self.read_memory(CortexM.DHCSR)
-            #LOG.info("s5js100.get_state dhcsr 0x%x", dhcsr)
+            # LOG.info("s5js100.get_state dhcsr 0x%x", dhcsr)
         except exceptions.TransferError:
-            #LOG.info("s5js100.get_state read fail dhcsr..try more")
+            # LOG.info("s5js100.get_state read fail dhcsr..try more")
             self._ap.dp.init()
             self._ap.dp.power_up_debug()
             dhcsr = self.read_memory(CortexM.DHCSR)
-            #LOG.info("fail s5js100.get_state dhcsr 0x%x", dhcsr)
+            # LOG.info("fail s5js100.get_state dhcsr 0x%x", dhcsr)
 
         if dhcsr & CortexM.S_RESET_ST:
             # Reset is a special case because the bit is sticky and really means
