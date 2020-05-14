@@ -450,6 +450,12 @@ def run_test():
 
             breakpoint.delete()
 
+            breakpoint = gdb.Breakpoint("main.c:91")
+            gdb_execute("c&")
+            event = yield(0.1)
+
+            breakpoint.delete()
+
         # TODO,c1728p9 - test reading/writing registers
 
         # TODO,c1728p9 - test stepping into interrupts
